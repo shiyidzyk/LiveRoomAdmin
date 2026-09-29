@@ -1,0 +1,43 @@
+<Window x:Class="LiveRoomAdmin.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="直播间管理终端" Height="820" Width="1320"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BgBrush}">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="210"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Margin="20,28,20,20">
+                    <TextBlock Text="直播间管理终端" FontSize="17" FontWeight="Bold" Foreground="White"/>
+                    <TextBlock x:Name="TxtVersion" Text="v1.0.0" FontSize="11" Foreground="#8B93A1" Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Top">
+                    <RadioButton x:Name="NavHome" GroupName="nav" Content="{DynamicResource S_NavHome}" Style="{StaticResource NavBtnStyle}" IsChecked="True" Tag="home"/>
+                    <RadioButton x:Name="NavLog" GroupName="nav" Content="{DynamicResource S_NavLog}" Style="{StaticResource NavBtnStyle}" Tag="log"/>
+                    <RadioButton x:Name="NavAdmin" GroupName="nav" Content="{DynamicResource S_NavAdmin}" Style="{StaticResource NavBtnStyle}" Tag="admin"/>
+                    <RadioButton x:Name="NavSettings" GroupName="nav" Content="{DynamicResource S_NavSettings}" Style="{StaticResource NavBtnStyle}" Tag="settings"/>
+                    <RadioButton x:Name="NavAbout" GroupName="nav" Content="{DynamicResource S_NavAbout}" Style="{StaticResource NavSubBtnStyle}" Tag="about"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Bottom" Margin="16,0,16,24">
+                    <Border Background="#1A1F27" CornerRadius="8" Padding="12">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="DotStatus" Width="10" Height="10" Fill="{DynamicResource RedBrush}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TxtConn" Text="{DynamicResource S_ServerDisconnected}" Foreground="White" FontSize="12" Margin="8,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock x:Name="TxtServer" Text="服务器: -" Foreground="#8B93A1" FontSize="11" Margin="0,6,0,0"/>
+                            <TextBlock x:Name="TxtOnline" Text="在线: -" Foreground="#8B93A1" FontSize="11" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <Grid Grid.Column="1">
+            <ContentControl x:Name="MainContent"/>
+        </Grid>
+    </Grid>
+</Window>
