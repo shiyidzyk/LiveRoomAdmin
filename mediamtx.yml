@@ -1,0 +1,12 @@
+logLevel: info
+rtmp: yes
+rtmpAddress: 0.0.0.0:1935
+hls: yes
+hlsAddress: 0.0.0.0:8888
+hlsAlwaysRemux: yes
+webrtc: yes
+webrtcAddress: 0.0.0.0:8889
+rtsp: yes
+rtspAddress: 0.0.0.0:8554
+paths:
+  all_others:
