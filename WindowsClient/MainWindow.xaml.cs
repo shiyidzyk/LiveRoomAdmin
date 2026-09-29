@@ -24,7 +24,6 @@ namespace LiveRoomAdmin
             NavAdmin.Checked += (_, _) => MainContent.Content = _admin;
             NavSettings.Checked += (_, _) => { _settings.Reset(); MainContent.Content = _settings; };
             MainContent.Content = _home;
-
             DateTime lastExpire = DateTime.MinValue;
             Api.SessionExpired += () => Dispatcher.Invoke(async () =>
             {
@@ -34,7 +33,6 @@ namespace LiveRoomAdmin
                 MainContent.Content = _admin;
                 await Api.EnsureLoginAsync(this);
             });
-
             Loaded += async (_, _) => await Startup();
         }
 
@@ -42,7 +40,6 @@ namespace LiveRoomAdmin
         {
             var host = SettingsService.Get("server_host", "");
             var port = int.Parse(SettingsService.Get("server_port", "3000"));
-
             if (!string.IsNullOrEmpty(host) && !LiveServer.IsRunning)
             {
                 Api.SetServer(host, port);
@@ -55,14 +52,12 @@ namespace LiveRoomAdmin
                 DotStatus.Fill = System.Windows.Media.Brushes.Gray;
                 TxtConn.Text = LocService.T("未启动", "Not started");
             }
-
             Api.AdminToken = SettingsService.Get("admin_token", "");
             if (!string.IsNullOrEmpty(Api.AdminToken))
             {
                 try { await Api.FetchMe(); }
                 catch { Api.AdminToken = ""; }
             }
-
             await RefreshStatus();
             _home.UpdateStreamInfo();
             _home.StartStream();
