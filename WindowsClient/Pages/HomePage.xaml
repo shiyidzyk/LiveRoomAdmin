@@ -4,6 +4,7 @@
       xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
       Background="{DynamicResource BgBrush}">
     <UserControl.Resources>
+        <!-- 复制按钮样式 -->
         <Style x:Key="CopyBtnStyle" TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource ThemeBrush}"/>
             <Setter Property="Padding" Value="10,4"/>
