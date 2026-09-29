@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>直播后台管理</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0d0d12;color:#eee;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;}
+  .hidden{display:none !important;}
+  .login-box{max-width:340px;margin:12vh auto;background:#16161e;padding:30px;border-radius:16px;text-align:center;}
+  .login-box input{width:100%;padding:11px;margin-bottom:12px;background:#1e1e2a;border:1px solid #2a2a38;border-radius:10px;color:#fff;text-align:center;}
+  .login-box button{width:100%;padding:11px;background:#fb7299;border:none;border-radius:10px;color:#fff;font-size:15px;cursor:pointer;}
+  .wrap{padding:16px;max-width:1200px;margin:0 auto;}
+  h1{font-size:20px;margin-bottom:16px;}
+  .grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;}
+  @media(max-width:800px){.grid{grid-template-columns:1fr;}}
+  .card{background:#16161e;border:1px solid #2a2a38;border-radius:12px;padding:14px;margin-bottom:16px;}
+  .card h3{font-size:14px;margin-bottom:10px;color:#bbb;}
+  video{width:100%;background:#000;border-radius:8px;max-height:480px;}
+  table{width:100%;font-size:13px;border-collapse:collapse;}
+  th,td{padding:7px 8px;text-align:left;border-bottom:1px solid #222;}
+  .btn{border:none;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;margin:1px;color:#fff;}
+  .btn.warn{background:#f0a020;} .btn.kick{background:#e63946;} .btn.ban{background:#9b111e;} .btn.add{background:#6c5ce7;} .btn.restart{background:#07c160;} .btn.stop{background:#e63946;}
+  pre{background:#0a0a0f;padding:10px;border-radius:8px;font-size:12px;overflow:auto;max-height:280px;white-space:pre-wrap;color:#9fd;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;}
+  .stat{font-size:13px;color:#aaa;margin-bottom:8px;}
+  input.s{background:#1e1e2a;border:1px solid #2a2a38;border-radius:8px;color:#fff;padding:7px 9px;}
+</style>
+</head>
+<body>
+<div class="login-box" id="loginBox">
+  <h2>后台管理</h2>
+  <input type="text" id="au" placeholder="管理员用户名">
+  <input type="password" id="ap" placeholder="密码" onkeydown="if(event.key==='Enter')login()">
+  <button onclick="login()">登录</button>
+  <div style="margin-top:10px;font-size:12px;color:#888">默认 admin / admin123</div>
+</div>
+
+<div class="wrap hidden" id="dash">
+  <h1>🎛️ 直播后台管理</h1>
+  <div class="stat" id="stat"></div>
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h3>📺 直播预览</h3>
+        <video id="pv" autoplay muted playsinline></video>
+      </div>
+      <div class="card">
+        <h3>🎬 直播控制</h3>
+        <div class="row" style="margin-bottom:10px;">
+          <input class="s" id="roomWarnMsg" placeholder="房间警告内容" style="flex:1;min-width:160px;" value="直播间收到管理员警告，请遵守规则">
+          <button class="btn warn" onclick="roomWarn()">⚠️ 全员警告</button>
+        </div>
+        <div class="row">
+          <button class="btn stop" onclick="act('/admin/api/stop','强制下播？观众端会提示已下播')">⛔ 强制下播</button>
+          <button class="btn restart" onclick="act('/admin/api/resume','恢复直播？')">▶️ 恢复直播</button>
+          <button class="btn restart" onclick="act('/admin/api/restart','重启所有服务？')">🔄 重启服务</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>📋 运行日志 <button class="btn restart" onclick="loadLogs('server')">server</button><button class="btn restart" onclick="loadLogs('mediamtx')">mediamtx</button><button class="btn restart" onclick="loadLogs('ffmpeg')">ffmpeg</button></h3>
+        <pre id="log">...</pre>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3>👥 在线观众 / 账号管理</h3>
+        <table id="tbl"><thead><tr><th>用户</th><th>角色</th><th>代币</th><th>状态</th><th>操作</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div class="card">
+        <h3>🔑 修改管理员密码</h3>
+        <div class="row">
+          <input class="s" id="oldPw" type="password" placeholder="当前密码" style="flex:1;min-width:120px">
+          <input class="s" id="newPw" type="password" placeholder="新密码" style="flex:1;min-width:120px">
+          <button class="btn add" onclick="changeMyPw()">修改</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>➕ 新建账号</h3>
+        <div class="row">
+          <input class="s" id="nu" placeholder="用户名">
+          <input class="s" id="np" placeholder="密码">
+          <input class="s" id="nt" placeholder="代币" style="width:70px">
+          <select class="s" id="nr"><option value="user">观众</option><option value="admin">管理员</option></select>
+          <button class="btn add" onclick="createUser()">创建</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<script>
+let token=null, host=location.hostname;
+async function api(path,body){
+  const opt={headers:{'Authorization':'Bearer '+token}};
+  if(body){opt.method='POST';opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body);}
+  const r=await fetch(path,opt);return r.json();
+}
+async function login(){
+  const r=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:au.value,password:ap.value})});
+  const d=await r.json();
+  if(d.code===0){token=d.data.token;loginBox.classList.add('hidden');dash.classList.remove('hidden');startPreview();refresh();setInterval(refresh,3000);}
+  else alert(d.msg||'登录失败');
+}
+async function refresh(){
+  const o=await api('/admin/api/overview');if(o.code!==0)return;
+  stat.textContent=`在线 ${o.data.online} 人 · 运行 ${o.data.uptime}s · 账号 ${o.data.accounts} 个`;
+  const users=await api('/admin/api/users');
+  const roleNames={superadmin:'最高管理员',admin:'管理员',user:'观众'};
+  const tb=tbl.querySelector('tbody');tb.innerHTML='';
+  const online={};o.data.viewers.forEach(v=>online[v.name]=1);
+  for(const u of users.data){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${u.username}${u.online?' 🟢':''}</td><td>${u.roleName||roleNames[u.role]||u.role}</td><td>${u.tokens}</td><td>${u.banned?'🚫封禁':(u.online?'在线':'离线')}</td>`;
+    const td=document.createElement('td');
+    if(u.role!=='superadmin' && !u.username.endsWith('admin')){
+      const banBtn = u.banned
+        ? `<button class="btn restart" onclick="act2('/admin/api/unban',{username:'${u.username}'})">解封</button>`
+        : `<button class="btn ban" onclick="act2('/admin/api/ban',{username:'${u.username}'})">封禁</button>`;
+      td.innerHTML=`<button class="btn warn" onclick="act2('/admin/api/warn',{username:'${u.username}',message:'请注意你的发言'})">警告</button>
+        <button class="btn kick" onclick="act2('/admin/api/kick',{username:'${u.username}'})">踢出</button>
+        ${banBtn}
+        <button class="btn add" onclick="resetPw('${u.username}')">改密</button>`;
+    }
+    tr.appendChild(td);tb.appendChild(tr);
+  }
+}
+async function act(path,msg){if(!confirm(msg))return;await api(path,{});refresh();}
+async function roomWarn(){await api('/admin/api/warnroom',{message:document.getElementById('roomWarnMsg').value});}
+async function resetPw(name){const np=prompt('为 '+name+' 设置新密码');if(np){await api('/admin/api/update-user',{username:name,password:np});refresh();}}
+async function changeMyPw(){const r=await api('/admin/api/change-my-password',{oldPassword:document.getElementById('oldPw').value,newPassword:document.getElementById('newPw').value});alert(r.code===0?'修改成功':'失败：'+(r.msg||''));if(r.code===0){oldPw.value='';newPw.value='';}}
+async function act2(path,body){await api(path,body);refresh();}
+async function createUser(){
+  await api('/admin/api/users',{username:nu.value,password:np.value,tokens:Number(nt.value||0),role:nr.value});
+  nu.value=np.value=nt.value='';refresh();
+}
+async function loadLogs(f){const r=await api('/admin/api/logs?file='+f);log.textContent=r.data||'';log.scrollTop=log.scrollHeight;}
+function startPreview(){
+  const v=document.getElementById('pv');
+  if(window.Hls&&Hls.isSupported()){
+    const hls=new Hls({liveSyncDurationCount:2});
+    hls.loadSource(`http://${host}:8888/stream/test/index.m3u8`);hls.attachMedia(v);v.play().catch(()=>{});
+  }else{v.src=`http://${host}:8888/stream/test/index.m3u8`;v.play().catch(()=>{});}
+}
+</script>
+</body>
+</html>
