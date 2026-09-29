@@ -3,10 +3,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <ResourceDictionary>
+            <!-- 当前主题字典（运行时由 ThemeService 替换；默认原版） -->
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="pack://application:,,,/Themes/Default.xaml"/>
+                <!-- 当前语言字符串（运行时由 LocService 替换；默认简体中文） -->
                 <ResourceDictionary Source="pack://application:,,,/Strings/zh.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- 导航按钮样式 -->
             <Style x:Key="NavBtnStyle" TargetType="RadioButton">
                 <Setter Property="Foreground" Value="{DynamicResource NavTextBrush}"/>
                 <Setter Property="FontSize" Value="14"/>
@@ -33,12 +37,16 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+
+            <!-- 导航子项按钮样式（二级菜单） -->
             <Style x:Key="NavSubBtnStyle" TargetType="RadioButton" BasedOn="{StaticResource NavBtnStyle}">
                 <Setter Property="FontSize" Value="12.5"/>
                 <Setter Property="Margin" Value="24,2"/>
                 <Setter Property="Padding" Value="16,8"/>
                 <Setter Property="Foreground" Value="{DynamicResource NavSubTextBrush}"/>
             </Style>
+
+            <!-- 卡片样式（背景/圆角随主题） -->
             <Style x:Key="CardStyle" TargetType="Border">
                 <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
                 <Setter Property="CornerRadius" Value="{DynamicResource CardRadius}"/>
@@ -47,12 +55,16 @@
                 <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
                 <Setter Property="BorderThickness" Value="1"/>
             </Style>
+
+            <!-- 卡片标题 -->
             <Style x:Key="CardTitleStyle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="15"/>
                 <Setter Property="FontWeight" Value="Bold"/>
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                 <Setter Property="Margin" Value="0,0,0,12"/>
             </Style>
+
+            <!-- 主按钮（圆角随主题） -->
             <Style x:Key="PrimaryBtnStyle" TargetType="Button">
                 <Setter Property="Background" Value="{DynamicResource ThemeBrush}"/>
                 <Setter Property="Foreground" Value="White"/>
@@ -79,13 +91,19 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+
+            <!-- 次按钮 -->
             <Style x:Key="SecondaryBtnStyle" TargetType="Button" BasedOn="{StaticResource PrimaryBtnStyle}">
                 <Setter Property="Background" Value="{DynamicResource SecondaryBgBrush}"/>
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
             </Style>
+
+            <!-- 危险按钮 -->
             <Style x:Key="DangerBtnStyle" TargetType="Button" BasedOn="{StaticResource PrimaryBtnStyle}">
                 <Setter Property="Background" Value="{DynamicResource RedBrush}"/>
             </Style>
+
+            <!-- 胶囊开关（CheckBox 重模板，配色随主题；用于布尔设置项） -->
             <Style x:Key="SwitchStyle" TargetType="CheckBox">
                 <Setter Property="Cursor" Value="Hand"/>
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
@@ -114,6 +132,8 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+
+            <!-- 输入框 -->
             <Style x:Key="InputStyle" TargetType="TextBox">
                 <Setter Property="FontSize" Value="13"/>
                 <Setter Property="Padding" Value="10,8"/>

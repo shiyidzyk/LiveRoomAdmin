@@ -20,12 +20,15 @@ namespace LiveRoomAdmin
             WriteLog(".NET: " + Environment.Version);
             WriteLog("工作目录: " + Environment.CurrentDirectory);
 
+            // 应用保存的界面主题（须在创建主窗口前，确保初始加载即为所选主题）
             try { Services.ThemeService.Init(); WriteLog("界面主题: " + Services.ThemeService.Current); }
             catch (Exception ex) { WriteLog("主题加载失败: " + ex.Message); }
 
+            // 应用保存的语言（须在创建主窗口前，确保初始加载即为所选语言）
             try { Services.LocService.Init(); WriteLog("界面语言: " + Services.LocService.Current); }
             catch (Exception ex) { WriteLog("语言加载失败: " + ex.Message); }
 
+            // 全局异常捕获
             DispatcherUnhandledException += (s, args) =>
             {
                 WriteLog("Dispatcher异常: " + args.Exception);

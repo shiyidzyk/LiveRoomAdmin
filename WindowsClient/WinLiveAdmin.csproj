@@ -12,7 +12,9 @@
     <PublishSingleFile>false</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <Version>1.0.0</Version>
+    <!-- exe 图标（用户提供的“推流测试”图标） -->
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <!-- 程序默认以管理员身份运行（桌面/开始菜单快捷方式启动均弹 UAC） -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
