@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -11,15 +12,104 @@ namespace LiveRoomAdmin.Pages
 {
     public partial class AdminPage : UserControl
     {
+        // 多直播间：当前管理房间
+        private string _adminRoom = "main";
+        private List<RoomInfo> _adminRooms = new List<RoomInfo>();
+
         public AdminPage()
         {
             InitializeComponent();
+            // 每次进入管理页，若已登录则刷新多端登录策略与房间列表
             Loaded += async (_, _) =>
             {
-                if (!string.IsNullOrEmpty(MainWindow.Api.AdminToken)) await LoadPolicy();
+                if (!string.IsNullOrEmpty(MainWindow.Api.AdminToken))
+                {
+                    await LoadPolicy();
+                    await LoadAdminRooms();
+                }
             };
         }
 
+        /// <summary>加载直播间列表到房间选择框（保持当前选择）</summary>
+        public async Task LoadAdminRooms()
+        {
+            try
+            {
+                var rooms = await MainWindow.Api.GetRooms();
+                if (rooms == null || rooms.Count == 0) return;
+                var prev = _adminRoom;
+                _adminRooms = rooms;
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    CmbAdminRoom.ItemsSource = rooms;
+                    var target = rooms.Any(r => r.Key == prev) ? prev : "main";
+                    if (!rooms.Any(r => r.Key == target)) target = rooms[0].Key;
+                    _adminRoom = target;
+                    CmbAdminRoom.SelectedItem = rooms.FirstOrDefault(r => r.Key == target);
+                    RefreshAdminRoomState();
+                });
+            }
+            catch { }
+        }
+
+        private void RefreshAdminRoomState()
+        {
+            var r = _adminRooms.FirstOrDefault(x => x.Key == _adminRoom);
+            if (r == null) { TxtRoomState.Text = LocService.T("房间状态: 未知", "Room: Unknown"); return; }
+            TxtRoomState.Text = LocService.T("房间状态: ", "Room: ") + r.Name
+                + (r.Stopped ? LocService.T("（已下播）", " (offline)") : LocService.T("（直播中）", " (live)"));
+            TxtAdminRoomInfo.Text = r.Stopped && !string.IsNullOrEmpty(r.Message)
+                ? LocService.T("下播原因: ", "Reason: ") + r.Message
+                : LocService.T("当前管理房间: ", "Managing: ") + r.Name + LocService.T("，在线 ", ", online ") + r.Online;
+        }
+
+        private void CmbAdminRoom_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (CmbAdminRoom.SelectedItem is RoomInfo r && r.Key != _adminRoom)
+            {
+                _adminRoom = r.Key;
+                RefreshAdminRoomState();
+            }
+        }
+
+        private async void BtnNewRoom_Click(object sender, RoutedEventArgs e)
+        {
+            var win = Window.GetWindow(this);
+            var name = TxtNewRoomName.Text.Trim();
+            if (name.Length < 1)
+            { MessageBox.Show(win, LocService.T("请输入房间名称", "Enter a room name"), LocService.T("提示", "Notice")); return; }
+            try
+            {
+                var key = await MainWindow.Api.CreateRoom(name);
+                MessageBox.Show(win, LocService.T("房间创建成功", "Room created"), LocService.T("提示", "Notice"));
+                TxtNewRoomName.Clear();
+                await LoadAdminRooms();
+                var target = _adminRooms.FirstOrDefault(x => x.Key == key);
+                if (target != null) CmbAdminRoom.SelectedItem = target;
+            }
+            catch (Exception ex)
+            { MessageBox.Show(win, LocService.T("创建失败: ", "Create failed: ") + ex.Message, LocService.T("错误", "Error"), MessageBoxButton.OK, MessageBoxImage.Error); }
+        }
+
+        private async void BtnDelRoom_Click(object sender, RoutedEventArgs e)
+        {
+            var win = Window.GetWindow(this);
+            if (_adminRoom == "main")
+            { MessageBox.Show(win, LocService.T("主直播间不可删除", "Main room cannot be deleted"), LocService.T("提示", "Notice")); return; }
+            var name = _adminRooms.FirstOrDefault(x => x.Key == _adminRoom)?.Name ?? _adminRoom;
+            if (MessageBox.Show(win, LocService.T("确定删除直播间「", "Delete room \"") + name + LocService.T("」？此操作不可恢复！", "\"? This cannot be undone!"),
+                    LocService.T("删除确认", "Confirm Delete"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+            try
+            {
+                await MainWindow.Api.DeleteRoom(_adminRoom);
+                _adminRoom = "main";
+                await LoadAdminRooms();
+            }
+            catch (Exception ex)
+            { MessageBox.Show(win, LocService.T("删除失败: ", "Delete failed: ") + ex.Message, LocService.T("错误", "Error"), MessageBoxButton.OK, MessageBoxImage.Error); }
+        }
+
+        /// <summary>加载多端登录策略到控件</summary>
         private async Task LoadPolicy()
         {
             try
@@ -50,6 +140,7 @@ namespace LiveRoomAdmin.Pages
             catch (Exception ex) { MessageBox.Show(win, LocService.T("保存失败：", "Save failed: ") + ex.Message); }
         }
 
+        /// <summary>语言切换后刷新代码动态文本</summary>
         public void ApplyLang()
         {
             try { _ = RefreshUsers(); } catch { }
@@ -63,12 +154,14 @@ namespace LiveRoomAdmin.Pages
             catch { }
         }
 
+        /// <summary>打开某用户的登录设备管理对话框（可按设备强制下线）</summary>
         private void BtnDevices_Click(object sender, RoutedEventArgs e)
         {
             var username = (string)((Button)sender).Tag;
             DeviceListDialog.Show(Window.GetWindow(this), MainWindow.Api, username);
         }
 
+        /// <summary>确保已登录（统一入口，含登录弹窗与并发保护）</summary>
         public Task<bool> EnsureLoginAsync()
         {
             return MainWindow.Api.EnsureLoginAsync(Window.GetWindow(this));
@@ -77,6 +170,7 @@ namespace LiveRoomAdmin.Pages
         public async Task RefreshUsers()
         {
             if (string.IsNullOrEmpty(MainWindow.Api.AdminToken)) return;
+            // 「设为管理员」仅最高管理员可用（普通管理员只能创建观众账号）
             ChkNewAdmin.IsEnabled = MainWindow.Api.IsSuperAdmin;
             try
             {
@@ -90,11 +184,12 @@ namespace LiveRoomAdmin.Pages
                     if (u.Banned) { status = LocService.T("已封禁", "Banned"); color = new SolidColorBrush(Color.FromRgb(0xEF, 0x44, 0x44)); }
                     else if (u.Online) { status = LocService.T("在线", "Online"); color = new SolidColorBrush(Color.FromRgb(0x22, 0xC5, 0x5E)); }
                     else { status = LocService.T("离线", "Offline"); color = new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80)); }
+
                     Brush roleColor = u.Role switch
                     {
-                        "superadmin" => new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B)),
-                        "admin" => new SolidColorBrush(Color.FromRgb(0x3B, 0x82, 0xF6)),
-                        _ => new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80))
+                        "superadmin" => new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B)), // 橙
+                        "admin" => new SolidColorBrush(Color.FromRgb(0x3B, 0x82, 0xF6)),      // 蓝
+                        _ => new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80))             // 灰
                     };
                     string roleName = u.RoleName ?? (u.Role == "superadmin" ? LocService.T("最高管理员", "Super Admin") : u.Role == "admin" ? LocService.T("管理员", "Admin") : LocService.T("观众", "Viewer"));
                     string permSummary = u.Role switch
@@ -103,13 +198,17 @@ namespace LiveRoomAdmin.Pages
                         "admin" => PermSummaryText(u.Perms),
                         _ => "—"
                     };
+
+                    // 操作可见性：我能操作该目标（等级更低）+ 我（当前登录者）自己具备对应权限
                     var canBan = CanOperate(me.AdminRole, u.Role) && me.HasPerm("banUser");
                     var canKick = CanOperate(me.AdminRole, u.Role) && me.HasPerm("kickUser");
                     var canWarn = CanOperate(me.AdminRole, u.Role) && me.HasPerm("warnUser");
                     var canDelete = CanOperate(me.AdminRole, u.Role) && me.HasPerm("deleteUser") && u.Username != me.AdminUsernameSafe();
                     var canPromote = me.IsSuperAdmin && u.Role == "user" && u.Username != me.AdminUsernameSafe();
                     var canDemote = me.IsSuperAdmin && u.Role == "admin" && u.Username != me.AdminUsernameSafe();
+                    // 设备管理入口：目标在线 + 我具备「在线设备强制下线」权限（默认开启）
                     var canDevices = u.Online && me.HasPerm("deviceKick");
+
                     items.Add(new UserRow
                     {
                         Username = u.Username,
@@ -135,6 +234,7 @@ namespace LiveRoomAdmin.Pages
             catch { }
         }
 
+        /// <summary>操作者能否操作目标角色（只能操作比自己等级低的；superadmin 可操作 admin/user）</summary>
         private static bool CanOperate(string operatorRole, string targetRole)
         {
             var lv = new Dictionary<string, int> { { "superadmin", 3 }, { "admin", 2 }, { "user", 1 } };
@@ -156,6 +256,7 @@ namespace LiveRoomAdmin.Pages
             return sb.Length == 0 ? LocService.T("无权限", "No permission") : sb.ToString().Trim();
         }
 
+        // ---------- 权限管理 ----------
         private void LoadPermUsers()
         {
             if (CmbPermUser == null) return;
@@ -231,6 +332,7 @@ namespace LiveRoomAdmin.Pages
             { MessageBox.Show(Window.GetWindow(this), LocService.T("保存失败: ", "Save failed: ") + ex.Message, LocService.T("错误", "Error"), MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
+        // ---------- 用户操作 ----------
         private async void BtnCreateUser_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -286,7 +388,7 @@ namespace LiveRoomAdmin.Pages
         private async void BtnDelete_Click(object sender, RoutedEventArgs e)
         {
             var u = ((Button)sender).Tag as string;
-            if (MessageBox.Show(Window.GetWindow(this), LocService.T("确定删除账号 ", "Delete account ") + u + LocService.T("?此操作不可恢复！", "? This cannot be undone!"), LocService.T("删除确认", "Confirm Delete"),
+            if (MessageBox.Show(Window.GetWindow(this), LocService.T("确定删除账号 ", "Delete account ") + u + LocService.T("？此操作不可恢复！", "? This cannot be undone!"), LocService.T("删除确认", "Confirm Delete"),
                     MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
             try { await MainWindow.Api.DeleteUser(u); await RefreshUsers(); }
             catch (Exception ex) { MessageBox.Show(Window.GetWindow(this), LocService.T("删除失败: ", "Delete failed: ") + ex.Message, LocService.T("错误", "Error"), MessageBoxButton.OK, MessageBoxImage.Error); }
@@ -310,20 +412,22 @@ namespace LiveRoomAdmin.Pages
             catch (Exception ex) { MessageBox.Show(Window.GetWindow(this), LocService.T("操作失败: ", "Operation failed: ") + ex.Message, LocService.T("错误", "Error"), MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
+        // ---------- 直播管理 ----------
         private async void BtnStop_Click(object sender, RoutedEventArgs e)
         {
-            try { await MainWindow.Api.Post("/admin/api/stop", new { }); TxtRoomState.Text = LocService.T("房间状态: 已下播", "Room: Offline"); }
+            try { await MainWindow.Api.Post("/admin/api/stop", new { room = _adminRoom }); await LoadAdminRooms(); }
             catch (Exception ex) { MessageBox.Show(Window.GetWindow(this), ex.Message, LocService.T("错误", "Error"), MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
         private async void BtnResume_Click(object sender, RoutedEventArgs e)
         {
-            try { await MainWindow.Api.Post("/admin/api/resume", new { }); TxtRoomState.Text = LocService.T("房间状态: 直播中", "Room: Live"); }
+            try { await MainWindow.Api.Post("/admin/api/resume", new { room = _adminRoom }); await LoadAdminRooms(); }
             catch (Exception ex) { MessageBox.Show(Window.GetWindow(this), ex.Message, LocService.T("错误", "Error"), MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
         private async void BtnRestart_Click(object sender, RoutedEventArgs e)
         {
+            // 集成模式：本机服务由 LiveServer 重启
             if (LiveServer.IsRunning)
             {
                 LiveServer.RestartAll();
@@ -336,10 +440,11 @@ namespace LiveRoomAdmin.Pages
 
         private async void BtnWarnRoom_Click(object sender, RoutedEventArgs e)
         {
-            try { await MainWindow.Api.Post("/admin/api/warnroom", new { message = TxtWarnMsg.Text.Trim() }); }
+            try { await MainWindow.Api.Post("/admin/api/warnroom", new { message = TxtWarnMsg.Text.Trim(), room = _adminRoom }); }
             catch (Exception ex) { MessageBox.Show(Window.GetWindow(this), ex.Message, LocService.T("错误", "Error"), MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
+        // ---------- 密码管理 ----------
         private async void BtnChangeMyPass_Click(object sender, RoutedEventArgs e)
         {
             var oldP = TxtOldPass.Text.Trim();
