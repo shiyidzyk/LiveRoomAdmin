@@ -14,9 +14,9 @@
 
 ## 功能特性
 
-- 网页直播间：账号登录、弹幕聊天、礼物打赏（虚拟代币，模拟微信/支付宝/网银充值）、在线人数/观众列表、全屏播放、警告/封禁大字提示
-- 后台管理（网页 + 客户端）：三级权限（最高管理员 > 管理员 > 观众）、管理员细分授权、创建/封禁/踢出/警告/删除账号、强制下播/恢复/重启服务、多端登录策略与设备下线、服务日志
-- Windows 客户端：实时直播预览、首页状态面板、服务日志页、设置页（服务器/外观/语言/网页管理页开关）、关于与完整更新日志、安装向导（语言选择、桌面/开始菜单快捷方式）
+- 网页直播间：账号登录、弹幕聊天、礼物打赏（虚拟代币，模拟微信/支付宝/网银充值）、在线人数/观众列表、全屏播放、警告/封禁大字提示、多直播间切换（顶栏下拉 + ?room=房间key 直达）
+- 后台管理（网页 + 客户端）：三级权限（最高管理员 > 管理员 > 观众）、管理员细分授权、创建/封禁/踢出/警告/删除账号、强制下播/恢复/重启服务、多端登录策略与设备下线、服务日志、直播间管理（新建/删除直播间，按房间独立下播/恢复/警告）
+- Windows 客户端：实时直播预览、首页状态面板（多直播间选择下拉）、服务日志页、设置页（服务器/外观/语言/网页管理页开关）、关于与完整更新日志、安装向导（语言选择、桌面/开始菜单快捷方式）
 - 中英双语界面：安装向导开头选择语言（默认简体中文），设置页可随时切换
 
 ## 核心开源依赖
@@ -32,11 +32,18 @@
 
 ## 下载与更新日志
 
-> 最新版安装包：**1.02.00.beta**
+> 最新版安装包：**1.02.01.beta**
 >
-> 下载链接：https://aka.doubaocdn.com/s/VXbaN6xWs6
+> 下载链接：https://aka.doubaocdn.com/s/uEEb2PEeXS
 >
-> （安装包约 230MB，超出 GitHub 单文件 100MB 限制，故通过云盘链接分发；版本号与更新日志同步记录于此。）
+> （安装包约 240MB，超出 GitHub 单文件 100MB 限制，故通过云盘链接分发；版本号与更新日志同步记录于此。）
+
+### 1.02.01.beta（2026-10-18）
+- 新增「多直播间」功能：同时开多个直播间，每个直播间独立推流、独立管理、互不干扰
+- 客户端首页新增「选择直播间」下拉；推流地址 / 推流密钥 / 网页链接按当前房间动态生成（rtmp://IP:1935/stream/房间key）
+- 管理端「直播管理」页新增直播间管理：仅最高管理员可新建 / 删除直播间（主直播间不可删），下播 / 恢复 / 警告按所选房间生效
+- 网页直播间顶栏新增房间切换下拉，支持 ?room=房间key 直达；在线人数、弹幕、礼物流按房间隔离
+- 客户端 ffmpeg 转码守护改为多房间模型（顺带消除旧守护 30 秒无输出误杀导致的周期性断流）
 
 ### 1.02.00.beta（2026-09-29）
 - 客户端全面适配双语（简体中文 / English）：界面静态文案迁移到语言资源，切换即时生效
@@ -90,9 +97,9 @@ A LAN live-streaming system for OBS: native Windows client (WPF) + built-in live
 
 ## Features
 
-- Web room: account login, danmaku chat, gift tipping (virtual coins with simulated WeChat/Alipay/bank top-up), online viewer list, fullscreen playback, admin warning/ban overlays
-- Admin panel (web + client): 3-tier roles (Super Admin > Admin > Viewer), fine-grained admin permissions, create/ban/kick/warn/delete accounts, force-stop/resume/restart services, multi-device login policy & device kick, service logs
-- Windows client: live preview, home status dashboard, log viewer, settings (server/appearance/language/web-admin switch), about & full changelog, installer with language/desktop/Start menu options
+- Web room: account login, danmaku chat, gift tipping (virtual coins with simulated WeChat/Alipay/bank top-up), online viewer list, fullscreen playback, admin warning/ban overlays, multi-room switcher (top-bar dropdown + `?room=key` deep link)
+- Admin panel (web + client): 3-tier roles (Super Admin > Admin > Viewer), fine-grained admin permissions, create/ban/kick/warn/delete accounts, force-stop/resume/restart services, multi-device login policy & device kick, service logs, room management (create/delete rooms, per-room stop/resume/warn)
+- Windows client: live preview, home status dashboard (multi-room selector), log viewer, settings (server/appearance/language/web-admin switch), about & full changelog, installer with language/desktop/Start menu options
 - Bilingual UI (Simplified Chinese / English): pick the language at the start of the installer (Chinese by default), switch anytime in Settings
 
 ## Core Open-Source Dependencies
@@ -108,11 +115,18 @@ A LAN live-streaming system for OBS: native Windows client (WPF) + built-in live
 
 ## Download & Changelog
 
-> Latest installer: **1.02.00.beta**
+> Latest installer: **1.02.01.beta**
 >
-> Download: https://aka.doubaocdn.com/s/VXbaN6xWs6
+> Download: https://aka.doubaocdn.com/s/uEEb2PEeXS
 >
-> (The installer is ~230MB, above GitHub's 100MB per-file limit, so it is distributed via cloud link; the version and changelog are tracked here.)
+> (The installer is ~240MB, above GitHub's 100MB per-file limit, so it is distributed via cloud link; the version and changelog are tracked here.)
+
+### 1.02.01.beta (2026-10-18)
+- New "Multi-Room" feature: run multiple live rooms at once, each with independent stream & management
+- Client Home: new "Select Room" dropdown; stream URL / key / web link regenerate per room (rtmp://IP:1935/stream/room-key)
+- Admin "Live Room" tab: room management — only Super Admin can create/delete rooms (main room is protected); stop/resume/warn apply to the selected room
+- Web room: top-bar room switcher, `?room=key` deep link; viewers, danmaku and gifts are isolated per room
+- Client ffmpeg daemon rebuilt for multi-room (also removes the old 30s no-output auto-restart that caused periodic stream drops)
 
 ### 1.02.00.beta (2026-09-29)
 - Full bilingual UI (Simplified Chinese / English): static texts moved to language resources, switch takes effect instantly
