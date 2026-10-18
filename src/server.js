@@ -19,6 +19,23 @@ let loginPolicy = { multiEnabled: false, maxDevices: 1 };
 try { loginPolicy = Object.assign({ multiEnabled: false, maxDevices: 1 }, JSON.parse(fs.readFileSync(LOGIN_POLICY_FILE, 'utf8'))); } catch (e) {}
 function saveLoginPolicy() { fs.writeFileSync(LOGIN_POLICY_FILE, JSON.stringify(loginPolicy, null, 2)); };
 
+// ---------- rooms（多直播间） ----------
+// key: { name, stopped, message, createdAt }；默认房间 main 保证旧版兼容
+const ROOMS_FILE = path.join(ROOT, 'rooms.json');
+let rooms = {};
+try { rooms = JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8')); } catch (e) { rooms = {}; }
+if (!rooms['main']) rooms['main'] = { name: '主直播间', stopped: false, message: '', createdAt: Date.now() };
+function saveRooms() { fs.writeFileSync(ROOMS_FILE, JSON.stringify(rooms, null, 2)); }
+/** 校验房间 key，无效回退默认房间 main */
+function roomKey(k) { return rooms[k] ? k : 'main'; }
+function roomName(k) { return (rooms[k] || rooms['main'] || { name: k }).name; }
+/** 某房间在线人数（多设备按 username 去重） */
+function roomOnline(k) {
+  const seen = new Set();
+  for (const v of activeViewers.values()) if (v.room === k) seen.add(v.username);
+  return seen.size;
+}
+
 // ---------- accounts ----------
 let accounts = {};
 try { accounts = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8')); } catch (e) {}
@@ -61,7 +78,6 @@ function canOperate(s, target) { return roleLevel(target) < roleLevel(s.username
 
 // ---------- sessions ----------
 const sessions = new Map(); // token -> {username, role, name, ip, ua, device, loginAt}
-const roomState = { stopped:false, message:'' };
 function makeToken() { return crypto.randomBytes(24).toString('hex'); }
 function clientIp(req) { return (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(); }
 /** 某用户当前全部有效会话 token */
@@ -77,9 +93,9 @@ function deviceLimit() {
     return Number.isFinite(n) && n >= 1 ? n : 1;
 }
 
-// ---------- live users / sse ----------
+// ---------- live users / sse（按房间） ----------
 const sseClients = new Set();
-// token -> { username, res, role, tokens }（多设备：同一用户可有多条）
+// token -> { username, res, role, tokens, room }（多设备：同一用户可有多条；room=当前所在直播间）
 const activeViewers = new Map();
 /** 某用户是否在线（任一设备连着 SSE） */
 function isOnline(username) {
@@ -87,22 +103,31 @@ function isOnline(username) {
     return false;
 }
 
-function broadcastViewers() {
-    // 多设备下按 username 去重
+/** 向指定房间的所有 SSE 连接广播 */
+function broadcastRoom(event, data, room) {
+    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const [tok, v] of activeViewers) {
+        if (v.room === room) { try { v.res.write(msg); } catch (e) {} }
+    }
+}
+/** 向所有房间广播（全局事件） */
+function broadcastAll(event, data) {
+    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const [tok, v] of activeViewers) { try { v.res.write(msg); } catch (e) {} }
+}
+function broadcastViewers(room) {
     const seen = new Set(); const list = [];
     for (const v of activeViewers.values()) {
-        if (!seen.has(v.username)) { seen.add(v.username); list.push({ name: v.username, role: v.role }); }
+        if (v.room !== room || seen.has(v.username)) continue;
+        seen.add(v.username); list.push({ name: v.username, role: v.role });
     }
-    broadcast('viewers', { count: list.length, list });
+    broadcastRoom('viewers', { count: list.length, list }, room);
 }
-function broadcast(event, data) {
-    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const c of sseClients) { try { c.write(msg); } catch (e) {} }
-}
-function sendTo(username, event, data) {
-    // 发给该用户的全部在线设备
+function broadcastViewersAll() { for (const k of Object.keys(rooms)) broadcastViewers(k); }
+function sendTo(username, event, data, room) {
+    // 发给该用户在指定房间的全部在线设备
     for (const [tok, v] of activeViewers) {
-        if (v.username === username) { try { v.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (e) {} }
+        if (v.username === username && v.room === room) { try { v.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (e) {} }
     }
 }
 
@@ -121,7 +146,7 @@ function forceKick(username, message, eventName = 'kicked') {
         for (const [tok, v] of [...activeViewers]) {
             if (v.username === username) { try { v.res.end(); } catch (e) {} activeViewers.delete(tok); }
         }
-        broadcastViewers();
+        broadcastViewersAll();
     }, 300);
     for (const tok of toks) sessions.delete(tok);
 }
@@ -133,7 +158,7 @@ function kickToken(token, message) {
     const v = activeViewers.get(token);
     if (v) {
         try { v.res.write('event: kicked\ndata: ' + JSON.stringify({ message: message || '', sess: token.slice(0, 8) }) + '\n\n'); } catch (e) {}
-        setTimeout(() => { try { v.res.end(); } catch (e) {} activeViewers.delete(token); broadcastViewers(); }, 300);
+        setTimeout(() => { try { v.res.end(); } catch (e) {} activeViewers.delete(token); broadcastViewersAll(); }, 300);
     }
     sessions.delete(token);
 }
@@ -185,6 +210,17 @@ const GIFTS = {
 };
 const startedAt = Date.now();
 
+/** 房间公开信息列表（供网页端/客户端选择房间） */
+function roomListData() {
+    return Object.keys(rooms).map(k => ({
+        key: k,
+        name: rooms[k].name || k,
+        stopped: !!rooms[k].stopped,
+        message: rooms[k].message || '',
+        online: roomOnline(k)
+    }));
+}
+
 const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const p = url.pathname;
@@ -201,26 +237,38 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // ---------- SSE ----------
+    // ---------- SSE（带房间参数） ----------
     if (p === '/api/events' && req.method === 'GET') {
         const tok = url.searchParams.get('token');
         const s = tok && sessions.get(tok);
         if (!s) { res.writeHead(401); res.end(); return; }
+        const room = roomKey(url.searchParams.get('room') || 'main');
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*' });
         res.write('event: connected\ndata: {"msg":"ok"}\n\n');
         sseClients.add(res);
-        res.write(`event: roomstate\ndata: ${JSON.stringify(roomState)}\n\n`);
-        activeViewers.set(tok, { username: s.username, res: res, role: s.role, tokens: accounts[s.username].tokens });
-        broadcast('system', { type: 'join', name: s.username });
-        broadcastViewers();
+        const rs = rooms[room];
+        res.write(`event: roomstate\ndata: ${JSON.stringify({ room, name: rs.name, stopped: rs.stopped, message: rs.message })}\n\n`);
+        activeViewers.set(tok, { username: s.username, res: res, role: s.role, tokens: accounts[s.username].tokens, room });
+        broadcastRoom('system', { type: 'join', name: s.username }, room);
+        broadcastViewers(room);
         // SSE 断开：仅移除该设备的在线状态，保留登录会话（可重连 SSE）
-        const cleanup = () => { sseClients.delete(res); activeViewers.delete(tok); broadcastViewers(); };
+        const cleanup = () => { sseClients.delete(res); activeViewers.delete(tok); broadcastViewers(room); };
         res.on('error', cleanup);
         req.on('close', cleanup);
         return;
     }
 
-    if (p === '/api/room-state' && req.method === 'GET') { json(res, 200, { code:0, data: roomState }); return; }
+    if (p === '/api/room-state' && req.method === 'GET') {
+        const room = roomKey(url.searchParams.get('room') || 'main');
+        const rs = rooms[room];
+        json(res, 200, { code: 0, data: { room, name: rs.name, stopped: rs.stopped, message: rs.message } });
+        return;
+    }
+    // ---------- 房间列表（公开） ----------
+    if (p === '/api/rooms' && req.method === 'GET') {
+        json(res, 200, { code: 0, data: roomListData() });
+        return;
+    }
     // ---------- user API ----------
     if (p === '/api/balance') {
         const s = authUser(req); if (!s) return json(res, 401, { code: 1, msg: '未登录' });
@@ -232,37 +280,41 @@ const server = http.createServer(async (req, res) => {
         const amt = Math.floor(amount || 0); if (amt <= 0) return json(res, 400, { code: 1, msg: '金额无效' });
         setTimeout(() => {
             accounts[s.username].tokens += amt; saveAccounts();
-            broadcast('recharge', { name: s.username, amount: amt, tokens: accounts[s.username].tokens, method });
+            broadcastAll('recharge', { name: s.username, amount: amt, tokens: accounts[s.username].tokens, method });
             json(res, 200, { code: 0, data: { tokens: accounts[s.username].tokens, amount: amt } });
         }, 1500);
         return;
     }
     if (p === '/api/gift' && req.method === 'POST') {
         const s = authUser(req); if (!s) return json(res, 401, { code: 1, msg: '未登录' });
-        const { giftId } = await readBody(req);
+        const { giftId, room } = await readBody(req);
+        const r = roomKey(room || 'main');
         const g = GIFTS[giftId]; if (!g) return json(res, 400, { code: 1, msg: '礼物不存在' });
         const acc = accounts[s.username];
         if (acc.tokens < g.price) return json(res, 400, { code: 1, msg: '代币不足' });
         acc.tokens -= g.price; saveAccounts();
-        broadcast('gift', { name: s.username, giftName: g.name, giftIcon: g.icon, price: g.price, duration: g.duration, tokens: acc.tokens });
+        broadcastRoom('gift', { name: s.username, giftName: g.name, giftIcon: g.icon, price: g.price, duration: g.duration, tokens: acc.tokens, room: r }, r);
         json(res, 200, { code: 0, data: { tokens: acc.tokens } });
         return;
     }
     if (p === '/api/danmaku' && req.method === 'POST') {
         const s = authUser(req); if (!s) return json(res, 401, { code: 1, msg: '未登录' });
-        const { text } = await readBody(req);
+        const { text, room } = await readBody(req);
         if (!text || !text.trim()) return json(res, 400, { code: 1, msg: '空消息' });
-        broadcast('danmaku', { name: s.username, text: text.trim().slice(0, 200), color: '#' + crypto.randomBytes(3).toString('hex') });
+        const r = roomKey(room || 'main');
+        broadcastRoom('danmaku', { name: s.username, text: text.trim().slice(0, 200), color: '#' + crypto.randomBytes(3).toString('hex'), room: r }, r);
         json(res, 200, { code: 0 });
         return;
     }
     if (p === '/api/gifts') { json(res, 200, { code: 0, data: GIFTS }); return; }
     if (p === '/api/stream') {
         const host = (req.headers.host || 'localhost:3000').split(':')[0];
+        const room = roomKey(url.searchParams.get('room') || 'main');
         json(res, 200, { code: 0, data: {
-            hls: `http://${host}:8888/stream/test/index.m3u8`,
-            webrtc: `http://${host}:8889/lowlatency/whep`,
-            rtmp: `rtmp://${host}:1935/stream`
+            room,
+            hls: `http://${host}:8888/stream/${room}/index.m3u8`,
+            webrtc: `http://${host}:8889/lowlatency/${room}/whep`,
+            rtmp: `rtmp://${host}:1935/stream/${room}`
         }});
         return;
     }
@@ -287,11 +339,43 @@ const server = http.createServer(async (req, res) => {
         if (p === '/admin/api/overview' && req.method === 'GET') {
             const seen = new Set(); const list = [];
             for (const v of activeViewers.values()) if (!seen.has(v.username)) { seen.add(v.username); list.push({ name: v.username, role: v.role }); }
-            json(res, 200, { code: 0, data: { online: list.length, viewers: list, uptime: Math.floor((Date.now() - startedAt) / 1000), accounts: Object.keys(accounts).length } });
+            json(res, 200, { code: 0, data: { online: list.length, viewers: list, uptime: Math.floor((Date.now() - startedAt) / 1000), accounts: Object.keys(accounts).length, rooms: Object.keys(rooms).length } });
             return;
         }
         if (p === '/admin/api/me' && req.method === 'GET') {
             json(res, 200, { code: 0, data: { username: s.username, role: me.role, roleName: ROLE_NAMES[me.role] || me.role, perms: getPerms(me) } });
+            return;
+        }
+
+        // ---- 房间管理（列表/创建/删除，仅最高管理员可创建/删除） ----
+        if (p === '/admin/api/rooms' && req.method === 'GET') {
+            json(res, 200, { code: 0, data: roomListData() });
+            return;
+        }
+        if (p === '/admin/api/rooms' && req.method === 'POST') {
+            if (me.role !== 'superadmin') return json(res, 403, { code: 1, msg: '仅最高管理员可创建直播间' });
+            const { name } = await readBody(req);
+            const n = (name || '').toString().trim().slice(0, 30);
+            if (!n) return json(res, 400, { code: 1, msg: '房间名称必填' });
+            // 自动生成不冲突的 key：room1, room2, ...
+            let key = 'room1', i = 1;
+            while (rooms[key]) { i++; key = 'room' + i; }
+            rooms[key] = { name: n, stopped: false, message: '', createdAt: Date.now() };
+            saveRooms();
+            json(res, 200, { code: 0, data: { key } });
+            return;
+        }
+        if (p === '/admin/api/rooms' && req.method === 'DELETE') {
+            if (me.role !== 'superadmin') return json(res, 403, { code: 1, msg: '仅最高管理员可删除直播间' });
+            const { key } = await readBody(req);
+            if (!rooms[key]) return json(res, 404, { code: 1, msg: '直播间不存在' });
+            if (key === 'main') return json(res, 400, { code: 1, msg: '主直播间不可删除' });
+            delete rooms[key];
+            saveRooms();
+            // 通知仍在该房间的观众该房间已关闭（前端轮询房间列表后自行处理）
+            broadcastRoom('roomstop', { message: '直播间已被删除', room: key }, key);
+            broadcastViewersAll();
+            json(res, 200, { code: 0 });
             return;
         }
 
@@ -446,10 +530,12 @@ const server = http.createServer(async (req, res) => {
             json(res, 200, { code: 0 });
             return;
         }
+        // ---- 房间级警告 / 下播 / 恢复（room 参数，默认主直播间） ----
         if (p === '/admin/api/warnroom' && req.method === 'POST') {
             if (!hasPerm(s, 'roomControl')) return json(res, 403, { code: 1, msg: '没有直播控制权限' });
-            const { message } = await readBody(req);
-            broadcast('roomwarn', { message: message || '直播间收到管理员警告' });
+            const { message, room } = await readBody(req);
+            const r = roomKey(room || 'main');
+            broadcastRoom('roomwarn', { message: message || '直播间收到管理员警告', room: r }, r);
             json(res, 200, { code: 0 });
             return;
         }
@@ -465,21 +551,23 @@ const server = http.createServer(async (req, res) => {
         }
         if (p === '/admin/api/warn' && req.method === 'POST') {
             if (!hasPerm(s, 'warnUser')) return json(res, 403, { code: 1, msg: '没有警告权限' });
-            const { username, message } = await readBody(req);
+            const { username, message, room } = await readBody(req);
             if (!accounts[username]) return json(res, 404, { code: 1, msg: '用户不存在' });
             if (!canOperate(s, username)) return json(res, 400, { code: 1, msg: '不能警告同级或更高级账号' });
-            sendTo(username, 'warn', { message: message || '管理员警告你请注意发言' });
+            sendTo(username, 'warn', { message: message || '管理员警告你请注意发言' }, roomKey(room || 'main'));
             json(res, 200, { code: 0 });
             return;
         }
         if (p === '/admin/api/stop' && req.method === 'POST') {
             if (!hasPerm(s, 'roomControl')) return json(res, 403, { code: 1, msg: '没有直播控制权限' });
-            // 停止低延迟 ffmpeg（切断直播播放）；Windows 下由客户端进程管理器兜底
-            roomState.stopped=true; roomState.message='当前直播间已被管理员下播';
-            broadcast('roomstop', { message: roomState.message });
-            if (process.platform === 'win32') {
-                exec('taskkill /F /IM ffmpeg.exe /T 2>nul', () => {});
-            } else {
+            const { room } = await readBody(req);
+            const r = roomKey(room || 'main');
+            // 停止该房间低延迟转码（播放中断）；Windows 下由客户端 LiveServer 按房间状态精确停掉该房间 ffmpeg
+            rooms[r].stopped = true;
+            rooms[r].message = roomName(r) + ' 已被管理员下播';
+            saveRooms();
+            broadcastRoom('roomstop', { message: rooms[r].message, room: r }, r);
+            if (process.platform !== 'win32') {
                 exec('pkill -f ffmpeg', () => {});
             }
             json(res, 200, { code: 0 });
@@ -487,19 +575,24 @@ const server = http.createServer(async (req, res) => {
         }
         if (p === '/admin/api/resume' && req.method === 'POST') {
             if (!hasPerm(s, 'roomControl')) return json(res, 403, { code: 1, msg: '没有直播控制权限' });
-            roomState.stopped=false; roomState.message='';
-            // Windows 下 ffmpeg 循环由客户端 LiveServer 负责拉起（轮询 room-state）
+            const { room } = await readBody(req);
+            const r = roomKey(room || 'main');
+            rooms[r].stopped = false;
+            rooms[r].message = '';
+            saveRooms();
+            // Windows 下 ffmpeg 循环由客户端 LiveServer 负责按房间拉起（轮询 room-state）
             if (process.platform !== 'win32') {
-                exec('pkill -f ffmpeg; sleep 1; nohup bash -c \'while true; do cd '+ROOT+' && ./ffmpeg -hide_banner -loglevel warning -fflags nobuffer -i rtmp://127.0.0.1:1935/stream/test -c:v copy -c:a opus -b:a 64k -strict -2 -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/lowlatency >> ffmpeg.log 2>&1; sleep 5; done\' >/dev/null 2>&1 &', () => {});
+                exec('pkill -f ffmpeg; sleep 1; nohup bash -c \'while true; do cd '+ROOT+' && ./ffmpeg -hide_banner -loglevel warning -fflags nobuffer -i rtmp://127.0.0.1:1935/stream/'+r+' -c:v copy -c:a opus -b:a 64k -strict -2 -rtsp_transport tcp -f rtsp rtsp://127.0.0.1:8554/lowlatency/'+r+' >> ffmpeg.log 2>&1; sleep 5; done\' >/dev/null 2>&1 &', () => {});
             }
-            broadcast('roomresume', {});
+            broadcastRoom('roomresume', { room: r }, r);
             json(res, 200, { code: 0 });
             return;
         }
         if (p === '/admin/api/restart' && req.method === 'POST') {
             if (!hasPerm(s, 'roomControl')) return json(res, 403, { code: 1, msg: '没有直播控制权限' });
             const sh = path.join(ROOT, 'start_all.sh');
-            roomState.stopped=false; roomState.message='';
+            for (const k of Object.keys(rooms)) { rooms[k].stopped = false; rooms[k].message = ''; }
+            saveRooms();
             // Windows 下重启全部服务由客户端 LiveServer 执行
             if (process.platform !== 'win32') {
                 exec('pkill -f mediamtx; pkill -f ffmpeg; sleep 1; setsid sh ' + sh + ' >/dev/null 2>&1 &', () => {});
@@ -527,7 +620,7 @@ const server = http.createServer(async (req, res) => {
             res.end('网页端管理页已关闭，请在桌面客户端设置页中开启');
             return;
         }
-        const f = path.join(ROOT, 'public', p === '/admin.html' ? 'admin.html' : 'admin.html');
+        const f = path.join(ROOT, 'public', 'admin.html');
         fs.readFile(f, (err, data) => {
             if (err) { res.writeHead(404); res.end('not found'); return; }
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
