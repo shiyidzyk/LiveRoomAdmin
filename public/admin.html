@@ -43,19 +43,30 @@
   <div class="grid">
     <div>
       <div class="card">
-        <h3>📺 直播预览</h3>
+        <h3>📺 直播预览 <select class="s" id="roomSel" onchange="switchAdminRoom(this.value)" style="margin-left:8px;max-width:200px;background:#1e1e2a;border:1px solid #2a2a38;border-radius:8px;color:#fff;padding:5px 8px;cursor:pointer;"></select>
+          <button class="btn add" onclick="refreshRooms()" title="刷新房间列表">🔄</button>
+        </h3>
         <video id="pv" autoplay muted playsinline></video>
       </div>
       <div class="card">
         <h3>🎬 直播控制</h3>
+        <div class="stat" id="roomState" style="margin-bottom:10px;">房间状态: -</div>
         <div class="row" style="margin-bottom:10px;">
           <input class="s" id="roomWarnMsg" placeholder="房间警告内容" style="flex:1;min-width:160px;" value="直播间收到管理员警告，请遵守规则">
           <button class="btn warn" onclick="roomWarn()">⚠️ 全员警告</button>
         </div>
         <div class="row">
-          <button class="btn stop" onclick="act('/admin/api/stop','强制下播？观众端会提示已下播')">⛔ 强制下播</button>
-          <button class="btn restart" onclick="act('/admin/api/resume','恢复直播？')">▶️ 恢复直播</button>
+          <button class="btn stop" onclick="act('/admin/api/stop','强制下播该房间？观众端会提示已下播')">⛔ 强制下播</button>
+          <button class="btn restart" onclick="act('/admin/api/resume','恢复该房间直播？')">▶️ 恢复直播</button>
           <button class="btn restart" onclick="act('/admin/api/restart','重启所有服务？')">🔄 重启服务</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>🏠 房间管理 <span style="font-weight:normal;color:#888;font-size:12px;">（仅最高管理员）</span></h3>
+        <div class="row">
+          <input class="s" id="newRoomName" placeholder="新房间名称" style="flex:1;min-width:140px;">
+          <button class="btn add" onclick="newRoom()">➕ 新建房间</button>
+          <button class="btn kick" onclick="delRoom()">🗑 删除当前房间</button>
         </div>
       </div>
       <div class="card">
@@ -92,30 +103,69 @@
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 <script>
-let token=null, host=location.hostname;
-async function api(path,body){
+let token=null, host=location.hostname, curRoom='main', roomMap={}, pvHls=null;
+async function api(path,body,method){
   const opt={headers:{'Authorization':'Bearer '+token}};
-  if(body){opt.method='POST';opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body);}
+  if(body){opt.method=method||'POST';opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body);}
   const r=await fetch(path,opt);return r.json();
+}
+/** 刷新房间列表下拉 + 当前房间状态 */
+async function refreshRooms(){
+  const r=await api('/api/rooms');if(r.code!==0)return;
+  const sel=document.getElementById('roomSel');if(!sel)return;
+  roomMap={};sel.innerHTML='';
+  r.data.forEach(x=>{roomMap[x.key]=x;const o=document.createElement('option');o.value=x.key;o.textContent=x.name+(x.stopped?'（已下播）':'');sel.appendChild(o);});
+  if(!roomMap[curRoom])curRoom='main';
+  sel.value=curRoom;
+  updateRoomState();
+}
+/** 切换管理对象房间 */
+function switchAdminRoom(k){
+  curRoom=k||'main';
+  updateRoomState();startPreview();
+}
+function updateRoomState(){
+  const x=roomMap[curRoom]||{name:curRoom,stopped:false,message:'',online:0};
+  const st=document.getElementById('roomState');
+  if(st)st.textContent=`当前房间: ${x.name} · ${x.stopped?('已下播：'+x.message):'直播中'} · 在线 ${x.online||0} 人`;
+}
+/** 新建房间（仅最高管理员） */
+async function newRoom(){
+  const name=document.getElementById('newRoomName').value.trim();
+  if(!name){alert('请输入房间名称');return;}
+  const r=await api('/admin/api/rooms',{name});
+  if(r.code===0){
+    document.getElementById('newRoomName').value='';
+    await refreshRooms();
+    curRoom=r.data.key;switchAdminRoom(curRoom);
+    const sel=document.getElementById('roomSel');if(sel)sel.value=curRoom;
+  }else alert(r.msg||'创建失败');
+}
+/** 删除当前房间（主直播间不可删） */
+async function delRoom(){
+  if(curRoom==='main'){alert('主直播间不可删除');return;}
+  if(!confirm('确定删除直播间「'+(roomMap[curRoom]?roomMap[curRoom].name:curRoom)+'」？'))return;
+  const r=await api('/admin/api/rooms',{key:curRoom},'DELETE');
+  if(r.code===0){curRoom='main';await refreshRooms();switchAdminRoom('main');}
+  else alert(r.msg||'删除失败');
 }
 async function login(){
   const r=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:au.value,password:ap.value})});
   const d=await r.json();
-  if(d.code===0){token=d.data.token;loginBox.classList.add('hidden');dash.classList.remove('hidden');startPreview();refresh();setInterval(refresh,3000);}
+  if(d.code===0){token=d.data.token;loginBox.classList.add('hidden');dash.classList.remove('hidden');refreshRooms();startPreview();refresh();setInterval(refresh,3000);}
   else alert(d.msg||'登录失败');
 }
 async function refresh(){
   const o=await api('/admin/api/overview');if(o.code!==0)return;
-  stat.textContent=`在线 ${o.data.online} 人 · 运行 ${o.data.uptime}s · 账号 ${o.data.accounts} 个`;
+  stat.textContent=`在线 ${o.data.online} 人 · 运行 ${o.data.uptime}s · 账号 ${o.data.accounts} 个 · 直播间 ${o.data.rooms} 个`;
   const users=await api('/admin/api/users');
-  const roleNames={superadmin:'最高管理员',admin:'管理员',user:'观众'};
   const tb=tbl.querySelector('tbody');tb.innerHTML='';
   const online={};o.data.viewers.forEach(v=>online[v.name]=1);
   for(const u of users.data){
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${u.username}${u.online?' 🟢':''}</td><td>${u.roleName||roleNames[u.role]||u.role}</td><td>${u.tokens}</td><td>${u.banned?'🚫封禁':(u.online?'在线':'离线')}</td>`;
+    tr.innerHTML=`<td>${u.username}${u.online?' 🟢':''}</td><td>${u.role}</td><td>${u.tokens}</td><td>${u.banned?'🚫封禁':(u.online?'在线':'离线')}</td>`;
     const td=document.createElement('td');
-    if(u.role!=='superadmin' && !u.username.endsWith('admin')){
+    if(!u.username.endsWith('admin')){
       const banBtn = u.banned
         ? `<button class="btn restart" onclick="act2('/admin/api/unban',{username:'${u.username}'})">解封</button>`
         : `<button class="btn ban" onclick="act2('/admin/api/ban',{username:'${u.username}'})">封禁</button>`;
@@ -126,9 +176,10 @@ async function refresh(){
     }
     tr.appendChild(td);tb.appendChild(tr);
   }
+  await refreshRooms();
 }
-async function act(path,msg){if(!confirm(msg))return;await api(path,{});refresh();}
-async function roomWarn(){await api('/admin/api/warnroom',{message:document.getElementById('roomWarnMsg').value});}
+async function act(path,msg){if(!confirm(msg))return;await api(path,{room:curRoom});refresh();}
+async function roomWarn(){await api('/admin/api/warnroom',{message:document.getElementById('roomWarnMsg').value,room:curRoom});}
 async function resetPw(name){const np=prompt('为 '+name+' 设置新密码');if(np){await api('/admin/api/update-user',{username:name,password:np});refresh();}}
 async function changeMyPw(){const r=await api('/admin/api/change-my-password',{oldPassword:document.getElementById('oldPw').value,newPassword:document.getElementById('newPw').value});alert(r.code===0?'修改成功':'失败：'+(r.msg||''));if(r.code===0){oldPw.value='';newPw.value='';}}
 async function act2(path,body){await api(path,body);refresh();}
@@ -139,10 +190,11 @@ async function createUser(){
 async function loadLogs(f){const r=await api('/admin/api/logs?file='+f);log.textContent=r.data||'';log.scrollTop=log.scrollHeight;}
 function startPreview(){
   const v=document.getElementById('pv');
+  if(pvHls){try{pvHls.destroy();}catch(e){}pvHls=null;}
   if(window.Hls&&Hls.isSupported()){
-    const hls=new Hls({liveSyncDurationCount:2});
-    hls.loadSource(`http://${host}:8888/stream/test/index.m3u8`);hls.attachMedia(v);v.play().catch(()=>{});
-  }else{v.src=`http://${host}:8888/stream/test/index.m3u8`;v.play().catch(()=>{});}
+    pvHls=new Hls({liveSyncDurationCount:2});
+    pvHls.loadSource(`http://${host}:8888/stream/${curRoom}/index.m3u8`);pvHls.attachMedia(v);v.play().catch(()=>{});
+  }else{v.src=`http://${host}:8888/stream/${curRoom}/index.m3u8`;v.play().catch(()=>{});}
 }
 </script>
 </body>
