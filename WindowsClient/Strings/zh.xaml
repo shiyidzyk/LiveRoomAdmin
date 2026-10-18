@@ -97,6 +97,13 @@
     <sys:String x:Key="S_SavePerms">保存权限设置</sys:String>
     <sys:String x:Key="S_TabRoom">直播管理</sys:String>
     <sys:String x:Key="S_RoomStatus">房间状态</sys:String>
+    <sys:String x:Key="S_RoomManage">直播间管理</sys:String>
+    <sys:String x:Key="S_BtnNewRoom">➕ 新建房间</sys:String>
+    <sys:String x:Key="S_BtnDelRoom">🗑 删除房间</sys:String>
+    <sys:String x:Key="S_NewRoomName">新房间名称</sys:String>
+    <sys:String x:Key="S_RoomStateUnknown">房间状态: 未知</sys:String>
+    <sys:String x:Key="S_LblRoomSelect">选择直播间</sys:String>
+    <sys:String x:Key="S_BtnRefreshRooms">刷新</sys:String>
     <sys:String x:Key="S_BtnStop">强制下播</sys:String>
     <sys:String x:Key="S_BtnResume">恢复直播</sys:String>
     <sys:String x:Key="S_BtnRestart">重启全部服务</sys:String>

@@ -97,6 +97,13 @@
     <sys:String x:Key="S_SavePerms">Save Permissions</sys:String>
     <sys:String x:Key="S_TabRoom">Live Room</sys:String>
     <sys:String x:Key="S_RoomStatus">Room Status</sys:String>
+    <sys:String x:Key="S_RoomManage">Room Management</sys:String>
+    <sys:String x:Key="S_BtnNewRoom">+ New Room</sys:String>
+    <sys:String x:Key="S_BtnDelRoom">- Delete Room</sys:String>
+    <sys:String x:Key="S_NewRoomName">New Room Name</sys:String>
+    <sys:String x:Key="S_RoomStateUnknown">Room: Unknown</sys:String>
+    <sys:String x:Key="S_LblRoomSelect">Select Room</sys:String>
+    <sys:String x:Key="S_BtnRefreshRooms">Refresh</sys:String>
     <sys:String x:Key="S_BtnStop">Force Stop</sys:String>
     <sys:String x:Key="S_BtnResume">Resume</sys:String>
     <sys:String x:Key="S_BtnRestart">Restart All Services</sys:String>
