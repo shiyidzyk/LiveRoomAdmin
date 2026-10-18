@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -10,6 +13,10 @@ using System.Threading.Tasks;
 
 namespace LiveRoomAdmin.Services
 {
+    /// <summary>
+    /// 集成式直播服务器管理器：负责拉起/停止 mediamtx + node + ffmpeg 核心业务。
+    /// 默认不运行，由首页"开始直播"按钮触发。
+    /// </summary>
     public static class LiveServer
     {
         public const int PortNode = 3000;
@@ -20,7 +27,8 @@ namespace LiveRoomAdmin.Services
 
         private static Process _mtx;
         private static Process _node;
-        private static Process _ffmpeg;
+        // 多直播间：每个房间一个 ffmpeg 转码进程（rtmp -> rtsp lowlatency）
+        private static readonly Dictionary<string, Process> _ffmpegs = new Dictionary<string, Process>();
         private static Thread _ffmpegLoop;
         private static volatile bool _running;
         private static readonly object _lock = new object();
@@ -50,6 +58,7 @@ namespace LiveRoomAdmin.Services
             try { LogLine?.Invoke(line); } catch { }
         }
 
+        /// <summary>读取最近 N 行日志</summary>
         public static string TailLog(int n = 200)
         {
             var arr = _logQueue.ToArray();
@@ -57,6 +66,7 @@ namespace LiveRoomAdmin.Services
             return string.Join("\r\n", arr, start, arr.Length - start);
         }
 
+        /// <summary>本机局域网 IPv4（过滤虚拟网卡）</summary>
         public static string GetLocalIPv4()
         {
             try
@@ -86,6 +96,7 @@ namespace LiveRoomAdmin.Services
             return "127.0.0.1";
         }
 
+        /// <summary>启动核心业务（mediamtx + node + ffmpeg 循环）</summary>
         public static string Start()
         {
             lock (_lock)
@@ -101,12 +112,15 @@ namespace LiveRoomAdmin.Services
                 {
                     return "缺少 server.js";
                 }
+
                 _running = true;
                 try { File.AppendAllText(LogFile, "\r\n"); } catch { }
                 Log("=== 集成服务启动 ===");
                 Log("版本: " + VersionInfo.CurrentVersion);
                 Log("bins: " + BinDir);
                 Log("server: " + ServerDir);
+
+                // 1) mediamtx
                 try
                 {
                     var psi = new ProcessStartInfo
@@ -124,6 +138,8 @@ namespace LiveRoomAdmin.Services
                     Log($"mediamtx 已启动 (RTMP {PortRtmp} / HLS {PortHls} / WebRTC {PortWebRtc} / RTSP {PortRtsp})");
                 }
                 catch (Exception ex) { Log("mediamtx 启动失败: " + ex.Message); }
+
+                // 2) node
                 try
                 {
                     var psi = new ProcessStartInfo
@@ -141,14 +157,20 @@ namespace LiveRoomAdmin.Services
                     Log($"node 已启动 (HTTP {PortNode})");
                 }
                 catch (Exception ex) { Log("node 启动失败: " + ex.Message); }
+
+                // 3) ffmpeg 保活循环
                 _ffmpegLoop = new Thread(FfmpegLoop) { IsBackground = true };
                 _ffmpegLoop.Start();
+
+                // 4) Windows 防火墙入站放行（局域网 OBS 推流/观众访问必需）
                 EnsureFirewallRules();
+
                 Task.Delay(1500).ContinueWith(_ => Log("=== 集成服务启动完成 ==="));
                 return "";
             }
         }
 
+        /// <summary>自动添加 Windows 防火墙入站规则（需管理员权限，失败不阻塞服务）</summary>
         private static void EnsureFirewallRules()
         {
             try
@@ -183,6 +205,7 @@ namespace LiveRoomAdmin.Services
             }
         }
 
+        /// <summary>停止核心业务</summary>
         public static void Stop()
         {
             lock (_lock)
@@ -190,7 +213,7 @@ namespace LiveRoomAdmin.Services
                 if (!_running) return;
                 _running = false;
                 Log("=== 集成服务停止 ===");
-                KillFfmpeg();
+                KillAllFfmpeg();
                 try { _node?.Kill(true); } catch { }
                 try { _node?.WaitForExit(2000); } catch { }
                 try { _mtx?.Kill(true); } catch { }
@@ -200,6 +223,7 @@ namespace LiveRoomAdmin.Services
             }
         }
 
+        /// <summary>重启全部服务（管理页"重启全部服务"按钮）</summary>
         public static void RestartAll()
         {
             Task.Run(() =>
@@ -210,12 +234,39 @@ namespace LiveRoomAdmin.Services
             });
         }
 
-        private static void KillFfmpeg()
+        private static void TryKill(Process p)
         {
-            try { _ffmpeg?.Kill(true); } catch { }
-            _ffmpeg = null;
+            try { if (p != null && !p.HasExited) p.Kill(true); } catch { }
         }
 
+        private static void KillAllFfmpeg()
+        {
+            lock (_ffmpegs)
+            {
+                foreach (var p in _ffmpegs.Values) TryKill(p);
+                _ffmpegs.Clear();
+            }
+        }
+
+        /// <summary>从服务端拉取直播间 key 列表（失败回退默认主直播间）</summary>
+        private static List<string> GetRoomsFromServer()
+        {
+            var list = new List<string> { "main" };
+            try
+            {
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+                var resp = client.GetAsync($"http://127.0.0.1:{PortNode}/api/rooms").Result;
+                if (!resp.IsSuccessStatusCode) return list;
+                var body = resp.Content.ReadAsStringAsync().Result;
+                var doc = System.Text.Json.JsonDocument.Parse(body);
+                foreach (var x in doc.RootElement.GetProperty("data").EnumerateArray())
+                    list.Add(x.GetProperty("key").GetString());
+            }
+            catch { }
+            return list.Distinct().ToList();
+        }
+
+        /// <summary>ffmpeg 保活循环（多房间）：按房间列表为每个未下播房间拉起转码进程</summary>
         private static void FfmpegLoop()
         {
             int failCount = 0;
@@ -225,49 +276,51 @@ namespace LiveRoomAdmin.Services
             {
                 try
                 {
-                    if (IsRoomStopped())
+                    var rooms = GetRoomsFromServer();
+                    // 1) 清理已删除房间的残留进程
+                    lock (_ffmpegs)
                     {
-                        KillFfmpeg();
-                        Thread.Sleep(3000);
-                        continue;
+                        foreach (var k in _ffmpegs.Keys.ToList())
+                            if (!rooms.Contains(k)) { TryKill(_ffmpegs[k]); _ffmpegs.Remove(k); }
                     }
-                    if (_ffmpeg != null && !_ffmpeg.HasExited)
+                    // 2) 逐个房间：下播则不运行；未下播且进程不存在则拉起
+                    foreach (var room in rooms)
                     {
-                        Thread.Sleep(3000);
-                        continue;
-                    }
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = Path.Combine(BinDir, "ffmpeg.exe"),
-                        WorkingDirectory = ServerDir,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    };
-                    foreach (var arg in new[]
-                    {
-                        "-hide_banner", "-loglevel", "warning", "-fflags", "nobuffer",
-                        "-i", "rtmp://127.0.0.1:1935/stream/test",
-                        "-c:v", "copy", "-c:a", "opus", "-b:a", "64k",
-                        "-strict", "-2", "-rtsp_transport", "tcp",
-                        "-f", "rtsp", "rtsp://127.0.0.1:8554/lowlatency"
-                    }) psi.ArgumentList.Add(arg);
-                    _ffmpeg = Process.Start(psi);
-                    AttachReader(_ffmpeg, "ff");
-                    failCount = 0;
-                    Log("ffmpeg 转码守护已就绪 (等待推流，无流时每5秒自动重试)");
-                    _ffmpeg.WaitForExit(30 * 1000);
-                    if (_running && _ffmpeg != null && !_ffmpeg.HasExited)
-                    {
-                        Log("ffmpeg 30s 无输出，重启");
-                        KillFfmpeg();
-                    }
-                    else
-                    {
-                        var code = _ffmpeg?.ExitCode ?? -1;
+                        if (IsRoomStopped(room))
+                        {
+                            Process p;
+                            lock (_ffmpegs) { _ffmpegs.TryGetValue(room, out p); if (p != null) { TryKill(p); _ffmpegs.Remove(room); } }
+                            continue;
+                        }
+                        Process proc;
+                        lock (_ffmpegs)
+                        {
+                            if (_ffmpegs.TryGetValue(room, out proc) && proc != null && !proc.HasExited) continue;
+                        }
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = Path.Combine(BinDir, "ffmpeg.exe"),
+                            WorkingDirectory = ServerDir,
+                            UseShellExecute = false,
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            CreateNoWindow = true
+                        };
+                        foreach (var arg in new[]
+                        {
+                            "-hide_banner", "-loglevel", "warning", "-fflags", "nobuffer",
+                            "-i", "rtmp://127.0.0.1:1935/stream/" + room,
+                            "-c:v", "copy", "-c:a", "opus", "-b:a", "64k",
+                            "-strict", "-2", "-rtsp_transport", "tcp",
+                            "-f", "rtsp", "rtsp://127.0.0.1:8554/lowlatency/" + room
+                        }) psi.ArgumentList.Add(arg);
+
+                        var fp = Process.Start(psi);
+                        AttachReader(fp, "ff-" + room);
+                        lock (_ffmpegs) _ffmpegs[room] = fp;
+                        failCount = 0;
                         var now = DateTime.Now;
-                        var msg = $"等待推流中 (退出码 {code})...";
+                        var msg = "ffmpeg 转码守护已就绪 (房间 " + room + "，等待推流，无流时自动重试)";
                         if ((msg != lastErr || (now - lastErrLog).TotalSeconds >= 30))
                         {
                             Log(msg);
@@ -280,18 +333,19 @@ namespace LiveRoomAdmin.Services
                 {
                     failCount++;
                     Log($"ffmpeg 异常: {ex.Message} (第{failCount}次)");
-                    if (failCount >= 3) { Log("ffmpeg 连续失败3次，停止重试（HLS 兜底可用）"); break; }
+                    if (failCount >= 5) { Log("ffmpeg 连续失败5次，停止重试（HLS 兜底可用）"); break; }
                 }
-                if (_running) Thread.Sleep(5000);
+                if (_running) Thread.Sleep(3000);
             }
         }
 
-        private static bool IsRoomStopped()
+        /// <summary>轮询指定房间状态（是否被管理员下播）</summary>
+        private static bool IsRoomStopped(string room)
         {
             try
             {
                 using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-                var resp = client.GetAsync($"http://127.0.0.1:{PortNode}/api/room-state").Result;
+                var resp = client.GetAsync($"http://127.0.0.1:{PortNode}/api/room-state?room={Uri.EscapeDataString(room)}").Result;
                 if (!resp.IsSuccessStatusCode) return false;
                 var body = resp.Content.ReadAsStringAsync().Result;
                 return body.Contains("\"stopped\":true") || body.Contains("\"stopped\": true");
