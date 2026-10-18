@@ -7,17 +7,22 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
+
         <StackPanel Grid.Row="0">
             <TextBlock Text="{DynamicResource S_AdminTitle}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"/>
             <TextBlock x:Name="TxtSub" Text="{DynamicResource S_AdminSub}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
         </StackPanel>
+
         <TabControl Grid.Row="1" Margin="0,16,0,0" Background="Transparent" FontSize="13">
+            <!-- 用户管理 -->
             <TabItem Header="{DynamicResource S_TabUsers}">
                 <Grid Margin="4,12,4,4">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
+
+                    <!-- 创建用户表单 -->
                     <Border Grid.Row="0" Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="{DynamicResource S_CreateAccount}" Style="{StaticResource CardTitleStyle}"/>
@@ -48,6 +53,8 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <!-- 用户列表 -->
                     <Border Grid.Row="1" Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
@@ -104,6 +111,8 @@
                     </Border>
                 </Grid>
             </TabItem>
+
+            <!-- 权限管理（仅最高管理员） -->
             <TabItem Header="{DynamicResource S_TabPerms}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
@@ -143,9 +152,28 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+
+            <!-- 直播管理 -->
             <TabItem Header="{DynamicResource S_TabRoom}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="{DynamicResource S_RoomManage}" Style="{StaticResource CardTitleStyle}"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{DynamicResource S_LblRoomSelect}" FontSize="13" VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    <ComboBox x:Name="CmbAdminRoom" Width="240" FontSize="13" SelectionChanged="CmbAdminRoom_Changed"/>
+                                    <Button x:Name="BtnNewRoom" Content="{DynamicResource S_BtnNewRoom}" Style="{StaticResource PrimaryBtnStyle}" Click="BtnNewRoom_Click"/>
+                                    <Button x:Name="BtnDelRoom" Content="{DynamicResource S_BtnDelRoom}" Style="{StaticResource DangerBtnStyle}" Click="BtnDelRoom_Click"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <TextBlock Text="{DynamicResource S_NewRoomName}" FontSize="13" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                    <TextBox x:Name="TxtNewRoomName" Width="240" Style="{StaticResource InputStyle}" Margin="10,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock x:Name="TxtAdminRoomInfo" Text="" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,0"/>
+                            </StackPanel>
+                        </Border>
+
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="{DynamicResource S_RoomStatus}" Style="{StaticResource CardTitleStyle}"/>
@@ -154,9 +182,10 @@
                                     <Button x:Name="BtnResume" Content="{DynamicResource S_BtnResume}" Style="{StaticResource PrimaryBtnStyle}" Click="BtnResume_Click"/>
                                     <Button x:Name="BtnRestart" Content="{DynamicResource S_BtnRestart}" Style="{StaticResource SecondaryBtnStyle}" Click="BtnRestart_Click"/>
                                 </StackPanel>
-                                <TextBlock x:Name="TxtRoomState" Text="房间状态: 未知" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,12,0,0"/>
+                                <TextBlock x:Name="TxtRoomState" Text="{DynamicResource S_RoomStateUnknown}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,12,0,0"/>
                             </StackPanel>
                         </Border>
+
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="{DynamicResource S_RoomWarn}" Style="{StaticResource CardTitleStyle}"/>
@@ -166,6 +195,7 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
+
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="{DynamicResource S_MultiPolicy}" Style="{StaticResource CardTitleStyle}"/>
@@ -183,6 +213,8 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+
+            <!-- 密码管理 -->
             <TabItem Header="{DynamicResource S_AdminPassTab}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
@@ -207,6 +239,7 @@
                                 </Grid>
                             </StackPanel>
                         </Border>
+
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="{DynamicResource S_ResetUserPass}" Style="{StaticResource CardTitleStyle}"/>
