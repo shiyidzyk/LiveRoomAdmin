@@ -1,10 +1,10 @@
 ; ============================================================
-;  直播间管理终端 (LiveRoomAdmin) 1.02.00.beta 安装程序
+;  直播间管理终端 (LiveRoomAdmin) 1.02.01.beta 安装程序
 ;  使用 NSIS 3.x + MUI2 构建
 ; ============================================================
 Unicode True
 Name "直播间管理终端"
-OutFile "LiveRoomAdmin-Setup-1.02.00.exe"
+OutFile "LiveRoomAdmin-Setup-1.02.01.exe"
 
 ; 安装到 64 位 Program Files
 InstallDir "$PROGRAMFILES64\直播间管理终端"
@@ -174,7 +174,7 @@ Section "直播间管理终端（必选）" SecCore
   ; ---- 「应用和功能 / 添加删除程序」注册信息 ----
   SetRegView 64
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LiveRoomAdmin" "DisplayName" "直播间管理终端"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LiveRoomAdmin" "DisplayVersion" "1.02.00.beta"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LiveRoomAdmin" "DisplayVersion" "1.02.01.beta"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LiveRoomAdmin" "Publisher" "局域网直播测试"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LiveRoomAdmin" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LiveRoomAdmin" "DisplayIcon" "$INSTDIR\LiveRoomAdmin.exe"
