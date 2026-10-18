@@ -30,12 +30,16 @@
             </Setter>
         </Style>
     </UserControl.Resources>
+
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
+
+        <!-- 顶部标题栏 -->
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -52,8 +56,21 @@
                 <Button x:Name="BtnAdminLogin" Content="{DynamicResource S_BtnAdminLogin}" Style="{StaticResource PrimaryBtnStyle}" Click="BtnAdminLogin_Click"/>
             </StackPanel>
         </Grid>
-        <Border Grid.Row="1" Margin="0,12,0,0" HorizontalAlignment="Center" Style="{StaticResource CardStyle}">
+
+        <!-- 房间选择条（多直播间） -->
+        <Border Grid.Row="1" Margin="0,12,16,0" HorizontalAlignment="Left" Style="{StaticResource CardStyle}">
             <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{DynamicResource S_LblRoomSelect}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <ComboBox x:Name="CmbRoom" Width="220" FontSize="13" VerticalAlignment="Center" SelectionChanged="CmbRoom_Changed"/>
+                <Button Content="{DynamicResource S_BtnRefreshRooms}" Style="{StaticResource SecondaryBtnStyle}" Click="BtnRefreshRooms_Click"/>
+                <TextBlock x:Name="TxtRoomState" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 信息条（常驻）：最高管理员账号/密码两个独立栏目常显；推流地址/密钥开播后出现，同一行排列 -->
+        <Border Grid.Row="2" Margin="0,12,0,0" HorizontalAlignment="Center" Style="{StaticResource CardStyle}">
+            <StackPanel Orientation="Horizontal">
+                <!-- 最高管理员账号 -->
                 <Border Background="#FFF7E6" CornerRadius="8" Padding="12,7" Margin="0,0,10,0" BorderBrush="#F5D9A0" BorderThickness="1">
                     <StackPanel Orientation="Horizontal">
                         <StackPanel>
@@ -63,6 +80,7 @@
                         <Button Content="{DynamicResource S_LblCopy}" Style="{StaticResource CopyBtnStyle}" Click="BtnCopyAdminUser_Click"/>
                     </StackPanel>
                 </Border>
+                <!-- 最高管理员密码 -->
                 <Border Background="#FFF7E6" CornerRadius="8" Padding="12,7" Margin="0,0,10,0" BorderBrush="#F5D9A0" BorderThickness="1">
                     <StackPanel Orientation="Horizontal">
                         <StackPanel>
@@ -72,6 +90,7 @@
                         <Button Content="{DynamicResource S_LblCopy}" Style="{StaticResource CopyBtnStyle}" Click="BtnCopyAdminPass_Click"/>
                     </StackPanel>
                 </Border>
+                <!-- 推流地址（开播后显示） -->
                 <Border x:Name="WrapRtmp" Background="#F6F8FA" CornerRadius="8" Padding="12,7" Margin="0,0,10,0" Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal">
                         <StackPanel>
@@ -81,6 +100,7 @@
                         <Button Content="{DynamicResource S_LblCopy}" Style="{StaticResource CopyBtnStyle}" Click="BtnCopyRtmp_Click"/>
                     </StackPanel>
                 </Border>
+                <!-- 推流密钥（开播后显示） -->
                 <Border x:Name="WrapKey" Background="#F6F8FA" CornerRadius="8" Padding="12,7" Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal">
                         <StackPanel>
@@ -92,21 +112,27 @@
                 </Border>
             </StackPanel>
         </Border>
-        <Grid Grid.Row="2" Margin="0,16,0,0">
+
+        <!-- 主体 -->
+        <Grid Grid.Row="3" Margin="0,16,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="2.2*"/>
                 <ColumnDefinition Width="1*"/>
             </Grid.ColumnDefinitions>
+
+            <!-- 左：视频区 -->
             <Border Style="{StaticResource CardStyle}" Margin="0,0,16,0">
                 <Grid>
                     <Border x:Name="VideoHost" Background="#0B0F14" CornerRadius="8" ClipToBounds="True">
                         <vlc:VideoView x:Name="VlcView"/>
                     </Border>
+                    <!-- 房间状态覆盖层 -->
                     <Border x:Name="Overlay" Background="#CC000000" CornerRadius="8" Visibility="Collapsed">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                             <TextBlock x:Name="TxtOverlayMsg" Text="" FontSize="30" FontWeight="Bold" Foreground="White" TextAlignment="Center" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
+                    <!-- 加载遮罩 -->
                     <Border x:Name="LoadingMask" Background="#55000000" CornerRadius="8">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                             <TextBlock Text="{DynamicResource S_TxtConnecting}" FontSize="16" Foreground="#DDDDDD"/>
@@ -114,8 +140,11 @@
                     </Border>
                 </Grid>
             </Border>
+
+            <!-- 右：状态卡片 -->
             <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
+                    <!-- 网页直播间链接提示（开播后显示） -->
                     <Border x:Name="CardWebLink" Style="{StaticResource CardStyle}" Visibility="Collapsed">
                         <StackPanel>
                             <TextBlock Text="{DynamicResource S_LblWebRoom}" Style="{StaticResource CardTitleStyle}"/>
@@ -134,6 +163,8 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <!-- 在线状态 -->
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="{DynamicResource S_LblOnlineStatus}" Style="{StaticResource CardTitleStyle}"/>
@@ -158,6 +189,8 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+
+                    <!-- 观众列表 -->
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="{DynamicResource S_LblViewers}" Style="{StaticResource CardTitleStyle}"/>
@@ -176,6 +209,8 @@
                             </ListBox>
                         </StackPanel>
                     </Border>
+
+                    <!-- 弹幕 / 礼物流 -->
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="{DynamicResource S_LblChatGifts}" Style="{StaticResource CardTitleStyle}"/>
