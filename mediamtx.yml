@@ -8,5 +8,6 @@ webrtc: yes
 webrtcAddress: 0.0.0.0:8889
 rtsp: yes
 rtspAddress: 0.0.0.0:8554
+# multi-room: all_others matches stream/<roomkey>
 paths:
   all_others:
